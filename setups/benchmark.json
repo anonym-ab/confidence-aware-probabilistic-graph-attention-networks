@@ -1,0 +1,162 @@
+{
+  "ml-1m-lbd": {
+    "database_name": "ml-1m",
+    "model_name": "lbd",
+    "batch_size": 8192
+  },
+  "ml-1m-cpmf": {
+    "database_name": "ml-1m",
+    "model_name": "cpmf",
+    "batch_size": 8192
+  },
+  "ml-1m-cbpmf": {
+    "database_name": "ml-1m",
+    "model_name": "cbpmf",
+    "batch_size": 8192
+  },
+  "ml-1m-learn-rank-mf": {
+    "database_name": "ml-1m",
+    "model_name": "learn-rank-mf",
+    "batch_size": 8192
+  },
+  "ml-1m-learn-rank-gnn": {
+    "database_name": "ml-1m",
+    "model_name": "learn-rank-gnn",
+    "batch_size": 8192
+  },
+  "ml-1m-learn-rank-gnn-mf": {
+    "database_name": "ml-1m",
+    "model_name": "learn-rank-gnn-mf"
+  },
+  "ml-1m-learn-rank-mf-cluster": {
+    "database_name": "ml-1m",
+    "model_name": "learn-rank-mf-cluster",
+    "batch_size": 8192
+  },
+  "ml-1m-learn-rank-mf-not-reg": {
+    "database_name": "ml-1m",
+    "model_name": "learn-rank-mf-not-reg",
+    "batch_size": 8192
+  },
+
+  "jester-joke-lbd": {
+    "database_name": "jester-joke",
+    "model_name": "lbd",
+    "batch_size": 8192
+  },
+  "jester-joke-cpmf": {
+    "database_name": "jester-joke",
+    "model_name": "cpmf",
+    "batch_size": 8192
+  },
+  "jester-joke-cbpmf": {
+    "database_name": "jester-joke",
+    "model_name": "cbpmf",
+    "batch_size": 8192
+  },
+  "jester-joke-learn-rank-mf": {
+    "database_name": "jester-joke",
+    "model_name": "learn-rank-mf",
+    "batch_size": 8192
+  },
+  "jester-joke-learn-rank-gnn": {
+    "database_name": "jester-joke",
+    "model_name": "learn-rank-gnn",
+    "batch_size": 8192
+  },
+  "jester-joke-learn-rank-gnn-mf": {
+    "database_name": "jester-joke",
+    "model_name": "learn-rank-gnn-mf",
+    "batch_size": 8192
+  },
+  "jester-joke-learn-rank-mf-cluster": {
+    "database_name": "jester-joke",
+    "model_name": "learn-rank-mf-cluster",
+    "batch_size": 8192
+  },
+  "jester-joke-learn-rank-mf-not-reg": {
+    "database_name": "jester-joke",
+    "model_name": "learn-rank-mf-not-reg",
+    "batch_size": 8192
+  },
+  "amazon-beauty-lbd": {
+    "database_name": "amazon-beauty",
+    "model_name": "lbd",
+    "batch_size": 8192
+  },
+  "amazon-beauty-cpmf": {
+    "database_name": "amazon-beauty",
+    "model_name": "cpmf",
+    "batch_size": 8192
+  },
+  "amazon-beauty-cbpmf": {
+    "database_name": "amazon-beauty",
+    "model_name": "cbpmf",
+    "batch_size": 8192
+  },
+  "amazon-beauty-learn-rank-mf": {
+    "database_name": "amazon-beauty",
+    "model_name": "learn-rank-mf",
+    "batch_size": 8192
+  },
+  "amazon-beauty-learn-rank-gnn": {
+    "database_name": "amazon-beauty",
+    "model_name": "learn-rank-gnn",
+    "batch_size": 8192
+  },
+  "amazon-beauty-learn-rank-gnn-mf": {
+    "database_name": "amazon-beauty",
+    "model_name": "learn-rank-gnn-mf",
+    "batch_size": 8192
+  },
+  "amazon-beauty-learn-rank-mf-cluster": {
+    "database_name": "amazon-beauty",
+    "model_name": "learn-rank-mf-cluster",
+    "batch_size": 8192
+  },
+  "amazon-beauty-learn-rank-mf-not-reg": {
+    "database_name": "amazon-beauty",
+    "model_name": "learn-rank-mf-not-reg",
+    "batch_size": 8192
+  },
+  "amazon-clothes-shoes-jewelry-lbd": {
+    "database_name": "amazon-clothes-shoes-jewelry",
+    "model_name": "lbd",
+    "batch_size": 8192
+  },
+  "amazon-clothes-shoes-jewelry-cpmf": {
+    "database_name": "amazon-clothes-shoes-jewelry",
+    "model_name": "cpmf",
+    "batch_size": 8192
+  },
+  "amazon-clothes-shoes-jewelry-cbpmf": {
+    "database_name": "amazon-clothes-shoes-jewelry",
+    "model_name": "cbpmf",
+    "batch_size": 8192
+  },
+  "amazon-clothes-shoes-jewelry-learn-rank-mf": {
+    "database_name": "amazon-clothes-shoes-jewelry",
+    "model_name": "learn-rank-mf",
+    "batch_size": 8192
+  },
+  "amazon-clothes-shoes-jewelry-learn-rank-gnn": {
+    "database_name": "amazon-clothes-shoes-jewelry",
+    "model_name": "learn-rank-gnn",
+    "batch_size": 8192
+  },
+  "amazon-clothes-shoes-jewelry-learn-rank-gnn-mf": {
+    "database_name": "amazon-clothes-shoes-jewelry",
+    "model_name": "learn-rank-gnn-mf",
+    "batch_size": 8192
+  },
+  "amazon-clothes-shoes-jewelry-learn-rank-mf-cluster": {
+    "database_name": "amazon-clothes-shoes-jewelry",
+    "model_name": "learn-rank-mf-cluster",
+    "batch_size": 8192
+  },
+  "amazon-clothes-shoes-jewelry-learn-rank-mf-not-reg": {
+    "database_name": "amazon-clothes-shoes-jewelry",
+    "model_name": "learn-rank-mf-not-reg",
+    "batch_size": 8192
+  }
+}
