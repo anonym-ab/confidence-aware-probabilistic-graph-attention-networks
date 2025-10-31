@@ -156,59 +156,265 @@ def sample_gamma(model: CBPMFModel, user_idx, item_idx, ratings):
     model.gamma_u.data = Gamma(model.a_u + 0.5 * count_u, model.b_u + 0.5 * sum_u).rsample()
     model.gamma_v.data = Gamma(model.a_v + 0.5 * count_v, model.b_v + 0.5 * sum_v).rsample()
 
+def sample_item_factors_sparse(
+    model,
+    user_idx,          # LongTensor [num_obs]
+    item_idx,          # LongTensor [num_obs]
+    ratings,           # Tensor [num_obs]
+    mu_v,              # Tensor [D]
+    Lambda_v,          # Tensor [D, D]
+    item_batch_size=10000,
+    obs_chunk_size=1_000_000,
+    eps=1e-6
+):
+    """
+    Batched sparse-style item factor sampling (no Python loop over items).
 
-def sample_item_factors(model: CBPMFModel, user_idx, item_idx, ratings, mu_v, Lambda_v):
-    D = model.latent_dim
-    eps = 1e-4
-    I = torch.eye(D, device=model.device)
+    Args:
+      model: object with attributes:
+          - U: [num_users, D]
+          - alpha: scalar
+          - gamma_u: [num_users]
+          - gamma_v: [num_items]
+          - num_items: int
+          - V: tensor to write results to [num_items, D]
+      user_idx, item_idx, ratings: 1D observation tensors
+      mu_v: prior mean for a single item [D]
+      Lambda_v: prior precision for a single item [D, D]
+      item_batch_size: number of items to process per batch when solving
+      obs_chunk_size: number of observations per chunk when accumulating
+    """
 
-    # Sample item factors
-    for j in range(model.num_items):
-        idx = (item_idx == j).nonzero(as_tuple=True)[0]
-        if idx.numel() == 0: continue
-        Ui = model.U[user_idx[idx]]
-        Rij = ratings[idx].unsqueeze(1)
-        prec = model.alpha * model.gamma_v[j] * model.gamma_u[user_idx[idx]].unsqueeze(1)
-        Lambda_star = Lambda_v + (Ui.T * prec.squeeze(-1)) @ Ui
-        cov = torch.inverse(Lambda_star)
-        mean = cov @ (Lambda_v @ mu_v.unsqueeze(1) + (Ui * (prec * Rij)).sum(dim=0, keepdim=True).T)
-        # Ensure covariance is symmetric and PD before sampling
-        cov = 0.5 * (cov + cov.T) + eps * I
-        model.V.data[j] = MultivariateNormal(mean.squeeze(-1), cov).rsample()
+    device = model.U.device
+    dtype = model.U.dtype
+    D = model.U.shape[1]
+    num_items = model.num_items
 
-def sample_user_factors(model: CBPMFModel, user_idx, item_idx, ratings, mu_u, Lambda_u):
-    D = model.latent_dim
-    eps = 1e-4
-    I = torch.eye(D, device=model.device)
+    prior_term = (Lambda_v @ mu_v).to(device=device, dtype=dtype)
 
-    # Sample user factors
-    for i in range(model.num_users):
-        idx = (user_idx == i).nonzero(as_tuple=True)[0]
-        if idx.numel() == 0:
-            continue
+    # Allocate accumulators
+    per_item_precision = torch.zeros((num_items, D, D), device=device, dtype=dtype)
+    per_item_rhs = torch.zeros((num_items, D), device=device, dtype=dtype)
 
-        Vj = model.V[item_idx[idx]]
-        Rij = ratings[idx].unsqueeze(1)
-        prec = model.alpha * model.gamma_u[i] * model.gamma_v[item_idx[idx]].unsqueeze(1)
+    # weights: w = alpha * gamma_v[item] * gamma_u[user]
+    w_all = model.alpha * model.gamma_v[item_idx].to(device=device) * model.gamma_u[user_idx].to(device=device)
+    ratings = ratings.to(device=device, dtype=dtype)
+    w_all = w_all.to(device=device, dtype=dtype)
 
-        Lambda_star = Lambda_u + (Vj.T * prec.squeeze(-1)) @ Vj
+    n_obs = user_idx.shape[0]
+    start = 0
+    while start < n_obs:
+        end = min(start + obs_chunk_size, n_obs)
+        ui = user_idx[start:end]
+        ii = item_idx[start:end]
+        rij = ratings[start:end]
+        wij = w_all[start:end]
 
-        # Symmetrize and jitter
-        Lambda_star = 0.5 * (Lambda_star + Lambda_star.T) + eps * I
-        cov = torch.inverse(Lambda_star)
+        # Gather user vectors
+        U_chunk = model.U[ui]  # [m, D]
 
-        term1 = Lambda_u @ mu_u.unsqueeze(1)
-        term2 = (Vj * (prec * Rij)).sum(dim=0, keepdim=True).T
-        mean = cov @ (term1 + term2)
+        # Weighted outer products per obs: wij * (u_i u_i^T)
+        outer = (U_chunk.unsqueeze(2) * U_chunk.unsqueeze(1)) * wij.view(-1, 1, 1)
 
-        # Final safety: symmetrize and jitter covariance
-        cov = 0.5 * (cov + cov.T) + eps * I
-        model.U.data[i] = MultivariateNormal(mean.squeeze(-1), cov).rsample()
+        # Accumulate precision blocks
+        per_item_precision.index_add_(0, ii, outer)
+
+        # Accumulate rhs: (wij * rij) * u_i
+        rhs_chunk = (wij * rij).unsqueeze(1) * U_chunk
+        per_item_rhs.index_add_(0, ii, rhs_chunk)
+
+        start = end
+
+    # Add prior contributions
+    per_item_precision += Lambda_v.unsqueeze(0)
+    per_item_rhs += prior_term.unsqueeze(0)
+
+    # Jitter for numerical stability
+    if eps > 0:
+        diag_idx = torch.arange(D, device=device)
+        per_item_precision[:, diag_idx, diag_idx] += eps
+
+    # Allocate output
+    V_out = torch.empty((num_items, D), device=device, dtype=dtype)
+
+    item_start = 0
+    while item_start < num_items:
+        item_end = min(item_start + item_batch_size, num_items)
+        idx_slice = slice(item_start, item_end)
+
+        P_batch = per_item_precision[idx_slice]  # [B, D, D]
+        b_batch = per_item_rhs[idx_slice]        # [B, D]
+        B = P_batch.shape[0]
+
+        # Cholesky decomposition of precision
+        L = torch.linalg.cholesky(P_batch)       # [B, D, D]
+
+        # Mean = P^{-1} b
+        b_batch_col = b_batch.unsqueeze(-1)      # [B, D, 1]
+        mean_col = torch.cholesky_solve(b_batch_col, L)  # [B, D, 1]
+        mean = mean_col.squeeze(-1)              # [B, D]
+
+        # Sampling: z ~ N(0, I), y = L^{-1} z, sample = mean + y
+        z = torch.randn((B, D), device=device, dtype=dtype)
+        y_col = torch.linalg.solve_triangular(L, z.unsqueeze(-1), upper=False, left=True)
+
+        y = y_col.squeeze(-1)
+        sample_batch = mean + y
+
+        V_out[idx_slice] = sample_batch
+
+        item_start = item_end
+
+    # Write back to model.V
+    model.V.data[:] = V_out
+
+    return model.V
+
+
+def sample_user_factors_sparse(
+    model,
+    user_idx,         # LongTensor [num_obs]
+    item_idx,         # LongTensor [num_obs]
+    ratings,          # Tensor [num_obs]
+    mu_u,             # Tensor [D]
+    Lambda_u,         # Tensor [D, D]
+    user_batch_size=10000,
+    obs_chunk_size=1_000_000,
+    eps=1e-6
+):
+    """
+    Build block-diagonal precision per user using scatter (index_add) and solve batched
+    linear systems with Cholesky to sample user factors.
+
+    This avoids a Python-level loop over users. Only loops:
+      - Over observation chunks (to limit memory while forming per-user sums).
+      - Over user batches when solving (to limit memory during Cholesky/solve).
+
+    Args:
+      model: object with attributes:
+          - V: [num_items, D]
+          - alpha: scalar
+          - gamma_u: [num_users]
+          - gamma_v: [num_items]
+          - num_users: int
+          - U: tensor to write results to (num_users, D)
+      user_idx, item_idx, ratings: observation arrays (1D)
+      mu_u: prior mean for *a single* user (D,)
+      Lambda_u: prior precision for *a single* user (D,D)
+      user_batch_size: how many users to solve simultaneously (tune for memory)
+      obs_chunk_size: how many observations to process per chunk when building sums
+    """
+
+    device = model.V.device
+    dtype = model.V.dtype
+    D = model.V.shape[1]
+    num_users = model.num_users
+
+    # Precompute constant prior term
+    prior_term = (Lambda_u @ mu_u).to(device=device, dtype=dtype)   # (D,)
+
+    # Initialize accumulators:
+    # per_user_precision_acc: [num_users, D, D]
+    # per_user_rhs_acc:       [num_users, D]
+    per_user_precision = torch.zeros((num_users, D, D), device=device, dtype=dtype)
+    per_user_rhs = torch.zeros((num_users, D), device=device, dtype=dtype)
+
+    # weights per observation
+    # w = alpha * gamma_u[user_idx] * gamma_v[item_idx]
+    w_all = model.alpha * model.gamma_u[user_idx].to(device=device) * model.gamma_v[item_idx].to(device=device)
+    # ensure shapes/dtypes
+    w_all = w_all.to(device=device, dtype=dtype)
+    ratings = ratings.to(device=device, dtype=dtype)
+
+    n_obs = user_idx.shape[0]
+    start = 0
+    while start < n_obs:
+        end = min(start + obs_chunk_size, n_obs)
+
+        ui = user_idx[start:end]      # LongTensor [m]
+        ii = item_idx[start:end]      # LongTensor [m]
+        rj = ratings[start:end]       # [m]
+        wj = w_all[start:end]         # [m]
+
+        # gather item vectors for this chunk: [m, D]
+        V_chunk = model.V[ii]         # [m, D]
+
+        # build weighted outer products: outer = wj[:,None,None] * (V_chunk[:,:,None] * V_chunk[:,None,:])
+        # shape: [m, D, D]
+        # compute as (V_chunk.unsqueeze(2) * V_chunk.unsqueeze(1)) * wj[:,None,None]
+        outer = (V_chunk.unsqueeze(2) * V_chunk.unsqueeze(1)) * wj.view(-1, 1, 1)
+
+        # accumulate into per_user_precision using index_add_ on dim=0
+        # index_add_ will add outer[k] into per_user_precision[ ui[k], ... ]
+        per_user_precision.index_add_(0, ui, outer)
+
+        # accumulate rhs: (wj * rj)[:,None] * V_chunk  -> shape [m, D]
+        rhs_chunk = (wj * rj).unsqueeze(1) * V_chunk   # [m, D]
+        per_user_rhs.index_add_(0, ui, rhs_chunk)
+
+        start = end
+
+    # Add prior precision and prior term for every user
+    # Lambda_u: [D,D] -> expand to [num_users, D, D]
+    per_user_precision += Lambda_u.unsqueeze(0)    # broadcasting
+
+    per_user_rhs += prior_term.unsqueeze(0)        # [num_users, D]
+
+    # Add jitter for numerical stability (to diagonal of each per-user precision)
+    if eps > 0:
+        diag_idx = torch.arange(D, device=device)
+        per_user_precision[:, diag_idx, diag_idx] += eps
+
+    # Solve per-user systems in batches to avoid a single huge Cholesky
+    # For each batch of users: compute L = cholesky(precision), mean = cholesky_solve(rhs)
+    # then sample: z ~ N(0, I) -> y = solve_triangular(L, z) -> sample = mean + y
+
+    U_out = torch.empty((num_users, D), device=device, dtype=dtype)
+
+    user_start = 0
+    while user_start < num_users:
+        user_end = min(user_start + user_batch_size, num_users)
+        idx_slice = slice(user_start, user_end)
+
+        P_batch = per_user_precision[idx_slice]   # [B, D, D]
+        b_batch = per_user_rhs[idx_slice]         # [B, D]
+
+        B = P_batch.shape[0]
+
+        # Cholesky of precision (lower triangular L such that P = L @ L.T)
+        # If some matrices are not SPD due to numerical issues, this will raise; we added jitter.
+        L = torch.linalg.cholesky(P_batch)        # [B, D, D] lower-tri
+
+        # Solve for mean: mean = P^{-1} b = cholesky_solve(b, L)
+        # cholesky_solve expects b with shape [..., n, k], so expand last dim
+        b_batch_col = b_batch.unsqueeze(-1)       # [B, D, 1]
+        mean_col = torch.cholesky_solve(b_batch_col, L)  # [B, D, 1]
+        mean = mean_col.squeeze(-1)               # [B, D]
+
+        # Sample:
+        # z ~ N(0, I) shape [B, D]
+        z = torch.randn((B, D), device=device, dtype=dtype)
+
+        # Solve L y = z^T for y: use solve_triangular for batch: returns shape [B, D, 1]
+        y_col = torch.linalg.solve_triangular(L, z.unsqueeze(-1), upper=False, left=True)
+        # [B, D, 1]
+        y = y_col.squeeze(-1)    # [B, D]
+
+        sample_batch = mean + y   # [B, D]
+
+        U_out[idx_slice] = sample_batch
+
+        user_start = user_end
+
+    # Write back to model.U (ensure same shape)
+    model.U.data[:] = U_out
+
+    return model.U
 
 
 def train_cbpmf(model: CBPMFModel, fit_dl, val_dl, environ, device, epochs=50, patience=8):
 
-    model.to(device)
+    model = model.to(device)
     early_stopping = EarlyStopping(patience=patience, path=environ.model_uri)
     history = []
     for t in range(epochs):
@@ -224,8 +430,8 @@ def train_cbpmf(model: CBPMFModel, fit_dl, val_dl, environ, device, epochs=50, p
             mu_u, Lambda_u = sample_hyper_u(model)
             mu_v, Lambda_v = sample_hyper_v(model)
             sample_gamma(model, user_idx, item_idx, ratings_norm)
-            sample_user_factors(model, user_idx, item_idx, ratings_norm, mu_u, Lambda_u)
-            sample_item_factors(model, user_idx, item_idx, ratings_norm, mu_v, Lambda_v)
+            sample_user_factors_sparse(model, user_idx, item_idx, ratings_norm, mu_u, Lambda_u)
+            sample_item_factors_sparse(model, user_idx, item_idx, ratings_norm, mu_v, Lambda_v)
 
             mu, sigma = model(user_idx, item_idx)
 
@@ -242,7 +448,7 @@ def train_cbpmf(model: CBPMFModel, fit_dl, val_dl, environ, device, epochs=50, p
                 user_idx, item_idx, ratings = user_idx.to(model.device), item_idx.to(model.device), ratings.to(model.device)
                 mu, sigma = model(user_idx, item_idx)
 
-                val_loss += torch.sqrt(torch.mean((mu * model.rmax + model.rmin - ratings) ** 2))
+                val_loss += torch.sqrt(torch.mean((mu * (model.rmax - model.rmin) + model.rmin - ratings) ** 2))
 
         avg_vloss = val_loss / len(val_dl)
 

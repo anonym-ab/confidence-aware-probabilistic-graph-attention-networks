@@ -43,6 +43,7 @@ poetry config virtualenvs.in-project true
 - when running main.py with --setup_instance: means that you probably want to rexecute an experiment, also provide --fit_mode to specify whether you want to fit the model or just rerun the evaluation.
 
 
-**Run Setups Examples**
+** Setups Examples**
 
-- python main.py --setups ./setups/setups.json --setup_name k_folds --k_folds 5
+- python main.py --setups ./setups-conf-benchmark.json --setup_name k_folds --k_folds 5 
+- 

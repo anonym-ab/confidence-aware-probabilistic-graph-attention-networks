@@ -15,9 +15,7 @@ def get_cpmf_model_and_dataloader(info: DatasetInfo):
         num_users=info.n_users,
         num_items=info.n_items,
         latent_dim=20,
-        rmin=info.rate_range[0],
-        rmax=info.rate_range[1],
-        delta_r=0.25
+        rate_range=info.rate_range
     )
 
     return model, fit_dataloader, eval_dataloader, test_dataloader
@@ -25,12 +23,12 @@ def get_cpmf_model_and_dataloader(info: DatasetInfo):
 
 class CPMF(TorchModel):
 
-    def __init__(self, num_users, num_items, latent_dim, rmin: float, rmax: float, delta_r: float):
+    def __init__(self, num_users, num_items, latent_dim, rate_range: list):
         super().__init__(None)
 
-        self.rmin = rmin
-        self.rmax = rmax
-        self.delta_r = delta_r
+        self.rmin = rate_range[0]
+        self.rmax = rate_range[1]
+        self.delta_r = rate_range[2] / 2
 
         # Latent factors
         self.user_factors = nn.Embedding(num_users, latent_dim)
@@ -43,6 +41,9 @@ class CPMF(TorchModel):
         nn.init.ones_(self.item_gamma.weight)
 
         self.alpha = nn.Parameter(torch.tensor(1.))
+
+        self.lambda_u = 0
+        self.lambda_v = 0
 
         self.switch_to_rating()
 
@@ -73,7 +74,7 @@ class CPMF(TorchModel):
         sigma = pred_scores[:, 1]
         nll = -d.Normal(mu, sigma).log_prob(true_scores_norm).mean()
 
-        loss = nll + self.regularization() * 0.0001
+        loss = nll + self.regularization()
         loss.backward()
         optimizer.step()
         return loss
@@ -84,8 +85,16 @@ class CPMF(TorchModel):
         rating = mu * (self.rmax - self.rmin) + self.rmin
         return torch.sqrt(torch.nn.functional.mse_loss(labels, rating, reduction='mean'))
 
-    def regularization(self):
-        return 0
+    def regularization(self, user_ids=None, item_ids=None):
+        reg = 0.0
+
+        # L2 regularization on all user factors (as defined by Gaussian priors in PMF)
+        reg += self.lambda_u * torch.sum(self.user_factors.weight ** 2)
+
+        # L2 regularization on all item factors (as defined by Gaussian priors in PMF)
+        reg += self.lambda_v * torch.sum(self.item_factors.weight ** 2)
+
+        return reg
 
     def sharpe_ratio(self, R, sigma):
         return (R - 0.7 * self.rmax) / (sigma + 0.00001)

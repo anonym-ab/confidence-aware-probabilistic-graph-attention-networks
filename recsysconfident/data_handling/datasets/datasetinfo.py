@@ -72,6 +72,7 @@ class DatasetInfo:
             test_df, eval_df = train_test_split(test_df, test_size=0.5, random_state=42)
 
             self.fit_df, self.val_df, self.test_df = fit_df, eval_df, test_df
+
             self.update_n_users()
             self.map_ids(self.ratings_df[self.user_col].unique(), self.ratings_df[self.item_col].unique())
 
@@ -95,6 +96,7 @@ class DatasetInfo:
 
         self.test_df.loc[:, self.user_col] = user_encoder.transform(self.test_df[self.user_col])
         self.test_df.loc[:, self.item_col] = item_encoder.transform(self.test_df[self.item_col])
+        self.ratings_df = concat([self.fit_df, self.val_df, self.test_df], ignore_index=True)
 
     def update_n_users(self):
 

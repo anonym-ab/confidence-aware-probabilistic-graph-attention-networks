@@ -119,7 +119,7 @@ class OrdRec(TorchModel):
         y_ui = self._forward(user_ids, item_ids)
         thresholds = self.get_user_thresholds(user_ids)
 
-        cum_probs = torch.sigmoid(y_ui.unsqueeze(1) - thresholds) #approximated CDF by sigmoid.
+        cum_probs = torch.sigmoid(thresholds - y_ui.unsqueeze(1)) #approximated CDF by sigmoid.
         padded_cum_probs = torch.cat([
             torch.zeros_like(y_ui.unsqueeze(1)),
             cum_probs,
@@ -210,17 +210,33 @@ class OrdRec(TorchModel):
     def predict_rank_scores(self, user_ids, item_ids):
         probs = self.predict_proba(user_ids, item_ids)
         scores = probs @ self.ranking_weights
-        p_max = probs.argmax(dim=1)
-        confidence = probs.gather(1, p_max.unsqueeze(1)).squeeze(1)  # Shape: [10000]
+        _, confidence = self._pred_ratings_confidence(probs)
         return scores, confidence
 
-    def predict_rating(self, user_ids, item_ids):
-        """Predict the most likely rating"""
-        probs = self.predict_proba(user_ids, item_ids)  # Shape: [10000, 5]
-        p_max = probs.argmax(dim=1).unsqueeze(1)  # Shape: [10000]
-        ratings = p_max + self.rmin  # Shape: [10000]
-        confidence = probs.gather(1, p_max).squeeze(1)  # Shape: [10000]
+    def _pred_ratings_confidence(self, probs):
+
+        num_ratings = probs.shape[1]
+
+        s = torch.arange(
+            self.rmin,
+            self.rmin + num_ratings,
+            device=probs.device,
+            dtype=probs.dtype
+        )
+
+        ratings = torch.sum(s * probs, dim=1)
+
+        e_r_squared = torch.sum((s ** 2) * probs, dim=1)
+        variance = torch.clamp(e_r_squared - ratings ** 2, min=0)
+        rho = torch.sqrt(variance)
+
+        confidence = 1 - rho
         return ratings, confidence
+
+    def predict_rating(self, user_ids, item_ids):
+        probs = self.predict_proba(user_ids, item_ids)
+
+        return self._pred_ratings_confidence(probs)
 
     def freeze_ranking_weights(self):
         """Freeze everything except ranking weights"""

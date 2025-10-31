@@ -4,5 +4,5 @@
   "rating_col": "rating",
   "columns": ["userId", "movieId", "rating"],
   "interactions_file": "jester-data.csv",
-  "rate_range": [-10, 10]
+  "rate_range": [-10, 10, 0.5]
 }

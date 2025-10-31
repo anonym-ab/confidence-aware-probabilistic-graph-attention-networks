@@ -9,31 +9,29 @@ from recsysconfident.data_handling.datasets.datasetinfo import DatasetInfo
 from recsysconfident.ml.models.torchmodel import TorchModel
 
 
-def get_cpgat_model_and_dataloader(info: DatasetInfo):
+def get_prgat_model_and_dataloader(info: DatasetInfo):
 
     fit_dataloader, eval_dataloader, test_dataloader = ui_ids_label(info)
 
-    model = CPGAT(
+    model = PRGAT(
         n_users=info.n_users,
         n_items=info.n_items,
         emb_dim=64,
-        rmin=info.rate_range[0],
-        rmax=info.rate_range[1],
-        delta_r=0.25
+        rate_range=info.rate_range
     )
 
     return model, fit_dataloader, eval_dataloader, test_dataloader
 
 
-class CPGAT(TorchModel):
+class PRGAT(TorchModel):
 
-    def __init__(self, n_users, n_items, emb_dim, rmin: float, rmax: float, delta_r: float):
+    def __init__(self, n_users, n_items, emb_dim, rate_range: list):
         super().__init__(None)
 
         self.n_users = n_users
-        self.rmin = rmin
-        self.rmax = rmax
-        self.delta_r = delta_r
+        self.rmin = rate_range[0]
+        self.rmax = rate_range[1]
+        self.delta_r = rate_range[2]/2
 
         self.ui_lookup = nn.Embedding(n_users + n_items, emb_dim)
 
@@ -53,7 +51,7 @@ class CPGAT(TorchModel):
         nn.init.ones_(self.item_gamma.weight)
 
         self.alpha = nn.Parameter(torch.tensor(1.))
-        nn.init.xavier_uniform(self.ui_lookup.weight)
+        nn.init.xavier_uniform_(self.ui_lookup.weight)
         self.mse_loss = nn.MSELoss()
         self.switch_to_rating()
 

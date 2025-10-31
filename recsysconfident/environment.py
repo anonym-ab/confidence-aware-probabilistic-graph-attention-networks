@@ -2,18 +2,18 @@ import json
 import os
 
 import torch
-from recsysconfident.ml.models.simple_model.gnn import get_gnn_model_and_dataloader
 
 from recsysconfident.data_handling.datasets.amazon_products import AmazonProductsReader
+from recsysconfident.data_handling.datasets.csv_reader import CsvReader
 from recsysconfident.data_handling.datasets.datasetinfo import DatasetInfo
-from recsysconfident.data_handling.datasets.jester_joke_reader import JesterJokeReader
 from recsysconfident.data_handling.datasets.movie_lens_reader import MovieLensReader
-from recsysconfident.ml.models.distribution_based.cp_gat import get_cpgat_model_and_dataloader
+from recsysconfident.ml.models.distribution_based.pr_gat import get_prgat_model_and_dataloader
 from recsysconfident.ml.models.distribution_based.cbpmf import get_cbpmf_model_and_dataloader
 from recsysconfident.ml.models.distribution_based.cp_mf import get_cpmf_model_and_dataloader
+from recsysconfident.ml.models.simple_confidence.dgat import get_dgat_model_and_dataloader
 from recsysconfident.ml.models.distribution_based.lbd import get_lbd_model_and_dataloader
-from recsysconfident.ml.models.simple_model.mf import get_mf_model_and_dataloader
-from recsysconfident.ml.models.simple_model.mf_non_reg import get_mf_non_reg_model_and_dataloader
+from recsysconfident.ml.models.simple_confidence.gat_mf import get_gat_mf_model_and_dataloader
+from recsysconfident.ml.models.simple_confidence.mf_non_reg import get_mf_non_reg_model_and_dataloader
 from recsysconfident.ml.models.distribution_based.ord_rec_mf import get_ordrec_model_and_dataloader
 
 
@@ -25,7 +25,6 @@ class Environment:
                  batch_size: int = 1024,
                  split_position: int = -1,
                  root_path:str="./",
-                 conf_calibration: bool=False,
                  min_inter_per_user: int=10):
         self.work_dir: str = None
         self.dataset_info: DatasetInfo = None
@@ -34,7 +33,6 @@ class Environment:
         self.database_name = database_name
         self.split_position = split_position
         self.root_path = root_path
-        self.conf_calibration = conf_calibration
         self.min_inter_per_user = min_inter_per_user
 
         self.load_df_info()
@@ -67,22 +65,21 @@ class Environment:
 
         self.database_name_fn = {
             "ml-1m": MovieLensReader(self.dataset_info).read,
-            "jester-joke": JesterJokeReader(self.dataset_info, "ratings.csv").read,
-            "amazon-music": AmazonProductsReader(self.dataset_info).read,
-            "amazon-clothing": AmazonProductsReader(self.dataset_info).read,
             "amazon-beauty": AmazonProductsReader(self.dataset_info).read,
-            "amazon-clothes-shoes-jewelry": AmazonProductsReader(self.dataset_info).read
+            "amazon-movies-tvs": AmazonProductsReader(self.dataset_info).read,
+            "netflix-prize": AmazonProductsReader(self.dataset_info).read
         }
 
         self.model_name_fn = {
-            "cpgat": get_cpgat_model_and_dataloader,
             "ordrec": get_ordrec_model_and_dataloader,
             "cbpmf": get_cbpmf_model_and_dataloader,
             "lbd": get_lbd_model_and_dataloader,
             "cpmf": get_cpmf_model_and_dataloader,
-            "mf": get_mf_model_and_dataloader,
-            "mf-not-reg": get_mf_non_reg_model_and_dataloader,
-            "gnn": get_gnn_model_and_dataloader,
+
+            "prgat": get_prgat_model_and_dataloader,
+            "gat-mf": get_gat_mf_model_and_dataloader,
+            "dgat": get_dgat_model_and_dataloader,
+            "mf": get_mf_non_reg_model_and_dataloader
         }
 
         if not self.database_name in self.database_name_fn:
@@ -90,7 +87,7 @@ class Environment:
 
         ratings_df = self.database_name_fn[self.database_name]()
         self.dataset_info.build(ratings_df, self.split_position, shuffle)
-        print(f"Gathered dataset with {len(ratings_df)} interactions, {self.dataset_info.n_users} users"
+        print(f"Gathered dataset with {len(self.dataset_info.ratings_df)} interactions, {self.dataset_info.n_users} users"
               f" and {self.dataset_info.n_items} items.")
 
         print("Interactions dataset split.")
@@ -109,4 +106,3 @@ class Environment:
             print(f"Loaded model weights from {self.model_uri}")
 
         return model, fit_dl, val_dl, test_dl
-

@@ -7,5 +7,5 @@
   "interactions_file": "ratings_Beauty.csv",
   "sep": ",",
   "has_head": false,
-  "rate_range": [1,5]
+  "rate_range": [1, 5, 0.5]
 }

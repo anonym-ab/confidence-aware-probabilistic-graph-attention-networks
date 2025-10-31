@@ -64,19 +64,18 @@ def inference(model: TorchModel, split_df: pd.DataFrame, environ: Environment, d
     relevance_col = environ.dataset_info.relevance_col
     r_pred_col = environ.dataset_info.r_pred_col
 
-    rmin = split_df[relevance_col].min()
-    rmax = split_df[relevance_col].max()
-
-    r_t = RELEVANCE_RATIO * (rmax - rmin) + rmin
-    split_df = keep_users_any_r_higher_than(split_df, user_col, relevance_col, r_t)
+    rmin = environ.dataset_info.rate_range[0]
+    rmax = environ.dataset_info.rate_range[1]
+    rt = RELEVANCE_RATIO * rmax
+    split_df[relevance_col] = split_df[relevance_col].astype(float)
+    split_df = keep_users_any_r_higher_than(split_df, user_col, relevance_col, rt)
     split_df = filter_out_users_less_than_k_inter(split_df, user_col, 10)
     split_df = append_neg_samples(split_df, environ, rmin)
-    split_df[environ.dataset_info.relevance_col] = split_df[environ.dataset_info.relevance_col].astype(float)
 
     dataloader = DataLoader(
-        TensorDataset(torch.from_numpy(split_df[user_col].values),
-                      torch.from_numpy(split_df[environ.dataset_info.item_col].values),
-                      torch.from_numpy(split_df[relevance_col].values),),
+        TensorDataset(torch.from_numpy(split_df[user_col].values.astype(int)).int(),
+                      torch.from_numpy(split_df[environ.dataset_info.item_col].values.astype(int)).int(),
+                      torch.from_numpy(split_df[relevance_col].values.astype(float)).float()),
         batch_size=environ.dataset_info.batch_size,
         shuffle=False)
 

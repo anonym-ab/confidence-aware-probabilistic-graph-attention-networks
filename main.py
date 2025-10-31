@@ -30,6 +30,10 @@ def main(setup: Setup, shuffle_train_split: bool = False):
     shuffle_train_split: whether shuffle the train split or use sorted by timestamp
     """
     print(setup.to_dict())
+    if setup_model_results_exists(setup.instance_dir) and not setup.reevaluate:
+        print("All results already obtained. Skip.")
+        return
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     environ = Environment(model_name=setup.model_name,
@@ -37,7 +41,6 @@ def main(setup: Setup, shuffle_train_split: bool = False):
                           instance_dir=setup.instance_dir,
                           split_position=setup.split_position,
                           batch_size=setup.batch_size,
-                          conf_calibration=setup.conf_calibration,
                           min_inter_per_user=setup.min_inter_per_user
                           )
 
@@ -46,10 +49,6 @@ def main(setup: Setup, shuffle_train_split: bool = False):
     if setup.fit_mode == 0 and not setup_and_model_exists(setup.instance_dir):
 
         model = setup_fit(setup, model, fit_dl, val_dl, environ, device)
-
-    if setup_model_results_exists(setup.instance_dir) and not setup.reevaluate:
-        print("All results already obtained. Skip.")
-        return
 
     export_setup(environ, setup.to_dict())
     eval_df, test_df = export_elementwise_error(model, environ, device)
@@ -100,9 +99,7 @@ def handle_custom_setup(args):
         split_position=args.split_position,
         fit_mode=args.fit_mode,
         batch_size=args.batch_size,
-        conf_calibration=bool(args.conf_calibration),
-        learning_rate=args.learning_rate,
-        # Include additional parameters as needed
+        learning_rate=args.learning_rate
     )
     main(setup)
 
@@ -120,8 +117,7 @@ if __name__ == '__main__':
     parser.add_argument("--split_position", type=int, default=0)
     parser.add_argument("--learning_rate", type=float, default=1e-3)
     parser.add_argument("--batch_size", type=int, default=1024)
-    parser.add_argument("--conf_calibration", type=int, default=0)
-    parser.add_argument("--setups", type=str, default="./setups/benchmark.json",
+    parser.add_argument("--setups", type=str, default="setups.json",
                         help="Path to predefined setups JSON file")
     parser.add_argument("--runs_folder", type=str, default="./runs",
                         help="Path to the runs folder")

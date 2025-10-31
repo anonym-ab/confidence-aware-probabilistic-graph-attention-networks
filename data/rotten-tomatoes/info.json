@@ -1,0 +1,11 @@
+{
+  "user_col": "userId",
+  "item_col": "itemId",
+  "rating_col": "rating",
+  "timestamp_col": "review_date",
+  "columns": ["userId", "itemId", "rating", "review_date"],
+  "interactions_file": "rotten_tomatoes.csv",
+  "sep": ",",
+  "has_head": true,
+  "rate_range": [1,5]
+}

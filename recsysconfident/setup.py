@@ -7,7 +7,6 @@ class Setup:
 
     def __init__(self, model_name: str,
                  database_name: str,
-                 conf_calibration: bool = False,
                  instance_dir: str = None,
                  split_position: int = 0,
                  fit_mode: int = 0,
@@ -21,7 +20,6 @@ class Setup:
 
         self.model_name = model_name
         self.database_name = database_name
-        self.conf_calibration = conf_calibration
         self.split_position = split_position
         self.fit_mode = fit_mode
         self.batch_size = batch_size
@@ -67,7 +65,6 @@ class Setup:
             'database_name': self.database_name,
             'instance_dir': self.instance_dir,
             'split_position': self.split_position,
-            'conf_calibration': self.conf_calibration,
             'fit_mode': self.fit_mode,
             'batch_size': self.batch_size,
             'learning_rate': self.learning_rate,

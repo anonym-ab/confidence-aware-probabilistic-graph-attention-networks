@@ -3,28 +3,28 @@ import torch.nn as nn
 
 from recsysconfident.data_handling.datasets.datasetinfo import DatasetInfo
 from recsysconfident.data_handling.dataloader.int_ui_ids_dataloader import ui_ids_label
-from recsysconfident.ml.models.simple_model.simple_conf_model import SimpleConfModel
-from recsysconfident.ml.models.torchmodel import TorchModel
+from recsysconfident.ml.models.simple_confidence.simple_conf_model import SimpleConfModel
 
-def get_mf_non_reg_model_and_dataloader(info: DatasetInfo):
+def get_mf_model_and_dataloader(info: DatasetInfo):
 
     fit_dataloader, eval_dataloader, test_dataloader = ui_ids_label(info)
 
-    model = MFNonRegularizedModel(
+    model = MatrixFactorizationModel(
         num_users=info.n_users,
         num_items=info.n_items,
         num_factors=64,
-        rmax=info.rate_range[0],
-        rmin=info.rate_range[1]
+        rmin=info.rate_range[0],
+        rmax=info.rate_range[1]
     )
 
     return model, fit_dataloader, eval_dataloader, test_dataloader
 
 
-class MFNonRegularizedModel(SimpleConfModel):
+class MatrixFactorizationModel(SimpleConfModel):
 
-    def __init__(self, num_users: int, num_items: int, num_factors: int, rmin:float, rmax: float):
-        super(MFNonRegularizedModel, self).__init__()
+    def __init__(self, num_users: int, num_items:int, num_factors:int, rmin:float, rmax:float):
+        super(MatrixFactorizationModel, self).__init__()
+
         self.rmin = rmin
         self.rmax = rmax
 
@@ -59,7 +59,7 @@ class MFNonRegularizedModel(SimpleConfModel):
 
         sim = dot_product / (u_norm * i_norm)  # Compute cosine similarity
 
-        return torch.stack([prediction * (self.rmax - self.rmin) + self.rmin, torch.abs(sim - sim.mean())],dim=1)
+        return torch.stack([prediction * (self.rmax - self.rmin) + self.rmin, torch.abs(sim - sim.mean())], dim=1)
 
     def regularization(self):
-        return 0
+        return self.l2(self.user_factors) + self.l2(self.item_factors)
